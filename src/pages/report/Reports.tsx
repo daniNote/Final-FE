@@ -26,8 +26,10 @@ const sanitizedApiBase = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : ap
 const contentEndpoint = `${sanitizedApiBase}/content`;
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
+const GENERATION_TYPES = ["MANUAL", "AUTO"] as const;
 
 type ContentStatus = (typeof STATUSES)[number];
+type GenerationType = (typeof GENERATION_TYPES)[number];
 
 type StatusMeta = {
   label: string;
@@ -36,11 +38,17 @@ type StatusMeta = {
   icon: LucideIcon;
 };
 
+type GenerationMeta = {
+  label: string;
+  badgeClass: string;
+};
+
 type ReportItem = {
   id: string;
   jobId: string;
   userId: string;
   uploadChannelId: string;
+  uploadChannelName: string;
   title: string;
   body: string;
   status: ContentStatus;
@@ -69,6 +77,9 @@ type ContentApiItem = {
   uploadChannelId?: string | number;
   channelId?: string | number;
   channel_id?: string | number;
+  uploadChannelName?: string;
+  channelName?: string;
+  channel_name?: string;
   title?: string;
   name?: string;
   body?: string;
@@ -95,21 +106,32 @@ type ContentApiItem = {
 const STATUS_META: Record<ContentStatus, StatusMeta> = {
   PENDING: {
     label: "검수 대기",
-    badgeClass: "bg-amber-100 text-amber-700 border-amber-200",
+    badgeClass: "",
     description: "AI 생성 콘텐츠를 검토하기 전 상태입니다.",
     icon: Clock3,
   },
   APPROVED: {
     label: "승인 완료",
-    badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    badgeClass: "",
     description: "승인이 완료되어 배포 가능한 콘텐츠입니다.",
     icon: CheckCircle2,
   },
   REJECTED: {
     label: "반려",
-    badgeClass: "bg-rose-100 text-rose-700 border-rose-200",
+    badgeClass: "",
     description: "수정이 필요해 반려된 콘텐츠입니다.",
     icon: Ban,
+  },
+};
+
+const GENERATION_TYPE_META: Record<GenerationType, GenerationMeta> = {
+  MANUAL: {
+    label: "수동생성",
+    badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+  },
+  AUTO: {
+    label: "자동생성",
+    badgeClass: "bg-sky-100 text-sky-700 border-sky-200",
   },
 };
 
@@ -366,12 +388,13 @@ export function ReportsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold">검수</h1>
+      <header className="space-y-2 mb-6">
+        {/*<p className="text-sm font-medium text-primary">콘텐츠 검수 허브</p>*/}
+        <h1 className="text-3xl font-semibold text-foreground">검수</h1>
         <p className="text-muted-foreground">
           업로드 전 AI 생성 컨텐츠를 확인하세요.
         </p>
-      </div>
+      </header>
 
       <Tabs
         value={activeTab}
@@ -661,6 +684,11 @@ function ReportCard({
   const titleInputId = `report-title-${report.id}`;
   const bodyInputId = `report-body-${report.id}`;
   const currentBodyLength = isEditing ? editForm.body.length : report.body.length;
+  const generationMeta =
+    report.status === "APPROVED" && GENERATION_TYPES.includes(report.generationType as GenerationType)
+      ? GENERATION_TYPE_META[report.generationType as GenerationType]
+      : null;
+  const showChannelBadge = Boolean(report.uploadChannelName);
   const adjustBodyTextareaHeight = useCallback(() => {
     const textarea = bodyTextareaRef.current;
     if (!textarea) {
@@ -723,15 +751,26 @@ function ReportCard({
                     }))
                   }
                   onClick={handleEditableAreaClick}
+                  className="border border-primary/40 focus-visible:ring-0 focus-visible:border-primary/40"
                   autoFocus
                 />
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-semibold leading-tight">{report.title}</h2>
+                {showChannelBadge ? (
+                  <Badge variant="outline" className="bg-blue-50 border-blue-200">
+                    {report.uploadChannelName}
+                  </Badge>
+                ) : null}
                 <Badge variant="outline" className={status.badgeClass}>
                   {status.label}
                 </Badge>
+                {generationMeta ? (
+                  <Badge variant="outline" className={generationMeta.badgeClass}>
+                    {generationMeta.label}
+                  </Badge>
+                ) : null}
               </div>
             )}
             {/*{isEditing && (*/}
@@ -762,7 +801,7 @@ function ReportCard({
                   }))
                 }
                 onClick={handleEditableAreaClick}
-                className="min-h-[240px]"
+                className="min-h-[240px] border border-primary/40 focus-visible:ring-0 focus-visible:border-primary/40"
               />
             </div>
           ) : (
@@ -921,6 +960,9 @@ function normalizeReportItem(item: ContentApiItem, index: number): ReportItem | 
   const uploadChannelId = ensureString(
     item.uploadChannelId ?? item.channelId ?? item.channel_id ?? "-"
   );
+  const uploadChannelName = ensureString(
+    item.uploadChannelName ?? item.channelName ?? item.channel_name ?? uploadChannelId
+  );
   const title = ensureString(item.title ?? item.name ?? `콘텐츠 ${index + 1}`);
   const body = ensureString(item.body ?? item.content ?? "");
   const status = toContentStatus(item.status ?? item.contentStatus ?? item.state);
@@ -943,6 +985,7 @@ function normalizeReportItem(item: ContentApiItem, index: number): ReportItem | 
     jobId,
     userId,
     uploadChannelId,
+    uploadChannelName,
     title,
     body,
     status,
