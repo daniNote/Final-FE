@@ -13,6 +13,7 @@ interface DemandChartProps {
 type DailyClickPoint = {
   clickDate: string;
   clicks: number;
+  uploads?: number;
 };
 
 type DailyClickResponse = {
@@ -24,6 +25,7 @@ type DailyClickResponse = {
 type ChartPoint = {
   time: string;
   clicks: number;
+  uploads: number;
 };
 
 const normalizeDate = (value: string) => {
@@ -38,11 +40,14 @@ const buildDailySeries = (start: string, end: string, data: DailyClickPoint[]): 
 
   if (!normalizedStart || !normalizedEnd) return [];
 
-  const clicksByDate = new Map<string, number>();
+  const valuesByDate = new Map<string, { clicks: number; uploads: number }>();
   data.forEach((item) => {
     const dateKey = normalizeDate(item.clickDate);
     if (dateKey) {
-      clicksByDate.set(dateKey, item.clicks);
+      valuesByDate.set(dateKey, {
+        clicks: item.clicks ?? 0,
+        uploads: item.uploads ?? 0,
+      });
     }
   });
 
@@ -52,7 +57,12 @@ const buildDailySeries = (start: string, end: string, data: DailyClickPoint[]): 
 
   while (cursor <= last) {
     const key = cursor.toISOString().slice(0, 10);
-    days.push({ time: key, clicks: clicksByDate.get(key) ?? 0 });
+    const values = valuesByDate.get(key);
+    days.push({
+      time: key,
+      clicks: values?.clicks ?? 0,
+      uploads: values?.uploads ?? 0,
+    });
     cursor.setDate(cursor.getDate() + 1);
   }
 
@@ -136,9 +146,9 @@ export function DemandChart({ selectedDay, dateRange, onDateRangeChange }: Deman
   const averageClicks = chartData.length ? Math.round(totalClicks / chartData.length) : 0;
   const peakDay = chartData.reduce<ChartPoint>(
     (peak, current) => (current.clicks > peak.clicks ? current : peak),
-    { time: "-", clicks: 0 }
+    { time: "-", clicks: 0, uploads: 0 }
   );
-  const yMax = chartData.reduce((max, item) => Math.max(max, item.clicks), 0);
+  const yMax = chartData.reduce((max, item) => Math.max(max, item.clicks, item.uploads), 0);
   const yDomainMax = yMax ? Math.ceil(yMax * 1.1) : 10;
 
   const validateAndApplyRange = () => {
@@ -175,13 +185,23 @@ export function DemandChart({ selectedDay, dateRange, onDateRangeChange }: Deman
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
+      const clicksPayload = payload.find((item: any) => item.dataKey === "clicks");
+      const uploadsPayload = payload.find((item: any) => item.dataKey === "uploads");
       return (
-        <div className="bg-background border border-border rounded-lg p-3 shadow-lg">
+        <div className="bg-background border border-border rounded-lg p-3 shadow-lg space-y-2">
           <p className="font-medium">{`날짜: ${label}`}</p>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-1 rounded" style={{ backgroundColor: payload[0].color }} />
-            <span className="text-sm">클릭: {payload[0].value}</span>
-          </div>
+          {clicksPayload && (
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-3 h-1 rounded" style={{ backgroundColor: clicksPayload.color }} />
+              <span>클릭: {clicksPayload.value}</span>
+            </div>
+          )}
+          {uploadsPayload && (
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-3 h-1 rounded" style={{ backgroundColor: uploadsPayload.color }} />
+              <span>업로드: {uploadsPayload.value}</span>
+            </div>
+          )}
         </div>
       );
     }
@@ -240,6 +260,15 @@ export function DemandChart({ selectedDay, dateRange, onDateRangeChange }: Deman
               name="클릭"
               dot={{ fill: "#22c55e", strokeWidth: 2, r: 4 }}
               activeDot={{ r: 6, stroke: "#22c55e", strokeWidth: 2 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="uploads"
+              stroke="#ef4444"
+              strokeWidth={3}
+              name="업로드"
+              dot={{ fill: "#ef4444", strokeWidth: 2, r: 4 }}
+              activeDot={{ r: 6, stroke: "#ef4444", strokeWidth: 2 }}
             />
           </LineChart>
         </ResponsiveContainer>
@@ -335,14 +364,14 @@ export function DemandChart({ selectedDay, dateRange, onDateRangeChange }: Deman
                   {peakDay.time !== "-" ? `${peakDay.clicks}회 (${peakDay.time})` : "데이터 없음"}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
-                <span className="text-sm">총합 / 평균</span>
-                <span className="text-sm font-medium">
+            <div className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+              <span className="text-sm">총합 / 평균</span>
+              <span className="text-sm font-medium">
                   {totalClicks}회 / 일평균 {averageClicks}회
-                </span>
-              </div>
+              </span>
             </div>
           </div>
+        </div>
         </div>
       </CardContent>
     </Card>
